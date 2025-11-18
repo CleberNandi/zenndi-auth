@@ -1,0 +1,22 @@
+# Imagem base que já contém 'uv' e outras ferramentas
+ARG DOCKER_BASE_IMAGE=zenndi-auth/base:latest
+FROM ${DOCKER_BASE_IMAGE}
+
+WORKDIR /app
+
+# Instala o debugger
+RUN uv pip install debugpy
+
+# Copia os arquivos de dependências
+COPY pyproject.toml ./
+
+# Instala as dependências, incluindo as de desenvolvimento
+RUN uv pip install -e .[dev]
+
+# Expõe a porta da aplicação e a porta de debug
+EXPOSE 8000
+EXPOSE 5678
+
+# Comando para iniciar a aplicação com debugger e hot-reload
+# --wait-for-client: Pausa a execução até o debugger do VS Code se conectar
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "--wait-for-client", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

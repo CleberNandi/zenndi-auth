@@ -1,0 +1,31 @@
+# Imagem base otimizada para projetos FastAPI com Python 3.13
+FROM python:3.13-slim
+
+# Define o fuso horário para evitar prompts e garantir logs corretos
+ENV TZ=America/Sao_Paulo
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Evita prompts interativos durante a instalação de pacotes
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Variáveis de ambiente para otimizar a instalação do pip
+ENV PIP_NO_CACHE_DIR=off \
+    PIP_DISABLE_PIP_VERSION_CHECK=on \
+    PIP_DEFAULT_TIMEOUT=100
+
+# Instala dependências de sistema essenciais para compilação e bibliotecas comuns
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instala 'uv', o gerenciador de pacotes rápido
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Adiciona o diretório do uv ao PATH da imagem para que esteja sempre disponível
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Define o diretório de trabalho
+WORKDIR /app
