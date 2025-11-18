@@ -14,7 +14,7 @@ COPY pyproject.toml ./
 # Sincroniza as dependências de produção em um venv.
 # 'uv sync' garante um ambiente limpo e exato, instalando apenas o que está
 # definido no pyproject.toml, e é mais rápido que resolver e instalar em passos separados.
-RUN /root/.cargo/bin/uv venv /opt/venv && /root/.cargo/bin/uv sync --no-cache --python /opt/venv/bin/python --no-dev pyproject.toml
+RUN /root/.local/bin/uv venv /opt/venv && /root/.local/bin/uv sync --no-cache --python /opt/venv/bin/python --no-dev pyproject.toml
 
 # ==============================================================================
 # Estágio 2: Final - Cria a imagem de produção enxuta

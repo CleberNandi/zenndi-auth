@@ -24,8 +24,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Instala 'uv', o gerenciador de pacotes rápido
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Adiciona o diretório do uv ao PATH da imagem para que esteja sempre disponível
-ENV PATH="/root/.cargo/bin:${PATH}"
+# Adiciona o diretório do uv (instalado em /root/.local/bin) ao PATH da imagem
+ENV PATH="/root/.local/bin:${PATH}"
 
 # Define o diretório de trabalho
 WORKDIR /app
