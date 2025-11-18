@@ -14,7 +14,11 @@ COPY pyproject.toml ./
 # Sincroniza as dependências de produção em um venv.
 # 'uv sync' garante um ambiente limpo e exato, instalando apenas o que está
 # definido no pyproject.toml, e é mais rápido que resolver e instalar em passos separados.
-RUN /root/.local/bin/uv venv /opt/venv && /root/.local/bin/uv sync --no-cache --python /opt/venv/bin/python --no-dev pyproject.toml
+RUN /root/.local/bin/uv venv /opt/venv
+
+# Executa o sync separadamente para garantir que ele rode no WORKDIR correto (/app)
+# onde o pyproject.toml foi copiado.
+RUN /root/.local/bin/uv sync --no-cache --python /opt/venv/bin/python --no-dev
 
 # ==============================================================================
 # Estágio 2: Final - Cria a imagem de produção enxuta
@@ -33,14 +37,17 @@ COPY --from=builder /opt/venv /opt/venv
 # Copia o código da aplicação
 COPY ./app ./app
 
+# Copia o script de entrypoint
+COPY ./entrypoint.sh /entrypoint.sh
+
 # Ajusta as permissões para o usuário não-root
 RUN chown -R appuser:appuser /app /opt/venv
 USER appuser
 
 # Define o número de workers, com um padrão de 4.
 # Pode ser sobrescrito em tempo de execução com a variável de ambiente WORKERS.
-ENV WORKERS=${WORKERS:-4}
+ENV WORKERS=4
 
 # Define o comando para iniciar a aplicação com Gunicorn
 # Usamos a forma "shell" do CMD para que a variável $WORKERS seja substituída.
-CMD /opt/venv/bin/gunicorn -w "$WORKERS" -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:8000
+CMD ["/entrypoint.sh"]

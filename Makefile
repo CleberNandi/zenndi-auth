@@ -28,6 +28,7 @@ DB_PORT ?= 5432
 # Docker images
 # ========================
 DOCKER_BASE_IMAGE=clebernandi/zenndi-auth-base:latest
+DOCKER_BASE_IMAGE_LOCAL=clebernandi/zenndi-auth-base:local
 DOCKER_APP_IMAGE=clebernandi/zenndi-auth-app
 
 # ========================
@@ -120,6 +121,14 @@ docker-base-build:
 
 docker-base-push:
 	docker push $(DOCKER_BASE_IMAGE)
+
+docker-base-build-local:
+	@echo "🏗️  Construindo imagem base localmente como '$(DOCKER_BASE_IMAGE_LOCAL)'..."
+	docker build --no-cache -f $(DOCKER_BASE) -t $(DOCKER_BASE_IMAGE_LOCAL) .
+
+docker-app-build-local: docker-base-build-local
+	@echo "📦 Construindo imagem da aplicação usando a base local..."
+	docker build --no-cache -f $(DOCKER_APP_FILE) --build-arg DOCKER_BASE_IMAGE=$(DOCKER_BASE_IMAGE_LOCAL) -t $(DOCKER_APP_IMAGE):local .
 
 docker-app-build:
 	docker build --no-cache -f $(DOCKER_APP_FILE) --build-arg DOCKER_BASE_IMAGE=$(DOCKER_BASE_IMAGE) -t $(DOCKER_APP_IMAGE):$(GIT_HASH) -t $(DOCKER_APP_IMAGE):latest .
