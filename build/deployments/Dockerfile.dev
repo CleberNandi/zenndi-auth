@@ -1,22 +1,29 @@
-# Imagem base que já contém 'uv' e outras ferramentas
-ARG DOCKER_BASE_IMAGE=zenndi-auth/base:latest
+# Imagem para desenvolvimento, com hot-reload e debugger
+
+# Use uma ARG para tornar a imagem base configurável
+ARG DOCKER_BASE_IMAGE=clebernandi/zenndi-auth-base:local
 FROM ${DOCKER_BASE_IMAGE}
 
 WORKDIR /app
 
 # Instala o debugger
-RUN uv pip install debugpy
+RUN /root/.local/bin/uv add debugpy
 
 # Copia os arquivos de dependências
 COPY pyproject.toml ./
 
-# Instala as dependências, incluindo as de desenvolvimento
-RUN uv pip install -e .[dev]
+# Sincroniza as dependências de produção em um venv.
+# 'uv sync' garante um ambiente limpo e exato, instalando apenas o que está
+# definido no pyproject.toml, e é mais rápido que resolver e instalar em passos separados.
+RUN /root/.local/bin/uv venv /opt/venv
+
+# Executa o sync separadamente para garantir que ele rode no WORKDIR correto (/app)
+# onde o pyproject.toml foi copiado.
+RUN /root/.local/bin/uv sync --no-cache --python /opt/venv/bin/python --no-dev
 
 # Expõe a porta da aplicação e a porta de debug
 EXPOSE 8000
 EXPOSE 5678
 
 # Comando para iniciar a aplicação com debugger e hot-reload
-# --wait-for-client: Pausa a execução até o debugger do VS Code se conectar
 CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "--wait-for-client", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

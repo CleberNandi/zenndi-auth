@@ -117,20 +117,25 @@ typecheck:
 .PHONY: docker-base-build docker-base-push docker-app-build docker-app-push docker-down
 
 docker-base-build:
+	@echo "🏗️  Construindo imagem base como '$(DOCKER_BASE_IMAGE)'..."
 	docker build --no-cache -f $(DOCKER_BASE) -t $(DOCKER_BASE_IMAGE) .
 
 docker-base-push:
+	@echo "🚀 Enviando '$(DOCKER_BASE_IMAGE)' para o registro..."
 	docker push $(DOCKER_BASE_IMAGE)
 
-docker-base-build-local:
-	@echo "🏗️  Construindo imagem base localmente como '$(DOCKER_BASE_IMAGE_LOCAL)'..."
-	docker build --no-cache -f $(DOCKER_BASE) -t $(DOCKER_BASE_IMAGE_LOCAL) .
+docker-base-build-local: docker-base-build
+	@echo "🏷️  Criando tag local '$(DOCKER_BASE_IMAGE_LOCAL)' a partir da imagem base..."
+	docker tag $(DOCKER_BASE_IMAGE) $(DOCKER_BASE_IMAGE_LOCAL)
 
 docker-app-build-local: docker-base-build-local
 	@echo "📦 Construindo imagem da aplicação usando a base local..."
 	docker build --no-cache -f $(DOCKER_APP_FILE) --build-arg DOCKER_BASE_IMAGE=$(DOCKER_BASE_IMAGE_LOCAL) -t $(DOCKER_APP_IMAGE):local .
+	@echo "📦 Eliminando imagens da aplicação órfans..."
+	docker image prune -f  
 
 docker-app-build:
+	@echo "🏗️  Construindo imagem do app como '$(DOCKER_APP_IMAGE)'..."
 	docker build --no-cache -f $(DOCKER_APP_FILE) --build-arg DOCKER_BASE_IMAGE=$(DOCKER_BASE_IMAGE) -t $(DOCKER_APP_IMAGE):$(GIT_HASH) -t $(DOCKER_APP_IMAGE):latest .
 
 docker-app-push:
@@ -162,7 +167,7 @@ docker-down:
 # ========================
 .PHONY: docker-debug-up docker-debug-down
 
-docker-debug-up:
+docker-debug-up: docker-base-build-local
 	@echo "🚀 Subindo ambiente de DEBUG (com monitoramento)..."
 	docker compose -f docker-compose.yml --profile monitoring up --build
 
