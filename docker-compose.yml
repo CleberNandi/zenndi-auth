@@ -31,10 +31,8 @@ services:
       retries: 3
 
   api:
-    build:
-      context: .
-      # Usamos o Dockerfile.dev para ter hot-reload e debugpy
-      dockerfile: ./build/deployments/Dockerfile.dev
+    image: clebernandi/zenndi-auth-dev:latest
+    restart: always
     environment:
       WORKERS: 8
       ENV_MODE: dev
@@ -55,7 +53,9 @@ services:
         condition: service_healthy
     volumes:
       # Monta o código local para habilitar o hot-reload
-      - ./:/app
+      - .:/app
+      # Cria um volume anônimo para o .venv para que ele não seja sobrescrito pelo volume acima.
+      - /app/.venv
 
   # --- Perfil de Monitoramento ---
   prometheus:

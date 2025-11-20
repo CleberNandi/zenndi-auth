@@ -1,29 +1,37 @@
 # Imagem para desenvolvimento, com hot-reload e debugger
 
 # Use uma ARG para tornar a imagem base configurável
-ARG DOCKER_BASE_IMAGE=clebernandi/zenndi-auth-base:local
+ARG DOCKER_BASE_IMAGE=clebernandi/zenndi-auth-base:latest
 FROM ${DOCKER_BASE_IMAGE}
 
 WORKDIR /app
 
-# Instala o debugger
-RUN /root/.local/bin/uv add debugpy
+# Cria um ambiente virtual que será ativado para os comandos subsequentes.
+RUN uv venv --seed
+ENV PATH="/app/.venv/bin:$PATH"
 
-# Copia os arquivos de dependências
-COPY pyproject.toml ./
+# Copia primeiro o arquivo de lock para aproveitar o cache do Docker.
+# A camada de instalação de dependências só será reconstruída se o requirements.lock mudar.
+COPY settings.toml requirements.lock ./
 
-# Sincroniza as dependências de produção em um venv.
-# 'uv sync' garante um ambiente limpo e exato, instalando apenas o que está
-# definido no pyproject.toml, e é mais rápido que resolver e instalar em passos separados.
-RUN /root/.local/bin/uv venv /opt/venv
+# Instala as dependências a partir do arquivo de lock.
+# Isso é muito mais rápido e determinístico do que compilar durante o build.
+RUN uv pip sync requirements.lock
 
-# Executa o sync separadamente para garantir que ele rode no WORKDIR correto (/app)
-# onde o pyproject.toml foi copiado.
-RUN /root/.local/bin/uv sync --no-cache --python /opt/venv/bin/python --no-dev
+# Instala o debugger separadamente, pois ele é necessário apenas para este ambiente.
+RUN uv pip install debugpy
+
+# Copia o código da aplicação para dentro da imagem.
+# Em tempo de execução, o volume do docker-compose irá sobrescrever este diretório,
+# perm=itindo o hot-reload, mas a cópia é necessária para a integridade da imagem.
+COPY /app /app
+COPY /logs /logs
+COPY /monitoring /monitoring
 
 # Expõe a porta da aplicação e a porta de debug
 EXPOSE 8000
 EXPOSE 5678
 
 # Comando para iniciar a aplicação com debugger e hot-reload
+# Como o PATH foi atualizado, o comando 'python' agora aponta para o python do venv.
 CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "--wait-for-client", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

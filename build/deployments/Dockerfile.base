@@ -26,6 +26,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Adiciona o diretório do uv (instalado em /root/.local/bin) ao PATH da imagem
 ENV PATH="/root/.local/bin:${PATH}"
+ENV PATH="/usr/local/bin:${PATH}"
 
 # Define o diretório de trabalho
 WORKDIR /app
