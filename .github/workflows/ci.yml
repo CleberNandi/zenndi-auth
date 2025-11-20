@@ -1,4 +1,4 @@
-name: CI Build and Push
+name: CI/CD - Build, Test, and Deploy
 
 on:
   push:
@@ -21,37 +21,186 @@ permissions:
   issues: write
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create .env file for CI
+        run: |
+          echo "Creating .env file for testing..."
+          cat <<EOF > .env
+          # CI Environment Variables
+          POSTGRES_USER=${{ secrets.POSTGRES_USER || 'testuser' }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD || 'testpass' }}
+          POSTGRES_DB=${{ secrets.POSTGRES_DB || 'testdb' }}
+          DATABASE_URL="postgresql+asyncpg://${{ secrets.POSTGRES_USER || 'testuser' }}:${{ secrets.POSTGRES_PASSWORD || 'testpass' }}@db:5432/${{ secrets.POSTGRES_DB || 'testdb' }}"
+          REDIS_URL="redis://redis:6379/0"
+
+          ENV_MODE=test
+          # Dummy secrets for testing
+          SECRET_KEY=a-very-secret-key-for-ci-that-is-not-production
+          ALGORITHM=HS256
+          SMTP_USER=test@example.com
+          SMTP_PASSWORD=password
+          SMTP_SERVER=mail.example.com
+          SMTP_PORT=587
+          EOF
+
+      - name: Start services (DB + Redis) for CI
+        run: docker compose -f docker-compose.ci.yml up -d db redis
+
+      - name: Wait for services to be healthy
+        run: |
+          echo "Waiting for DB and Redis to be healthy..."
+          docker compose -f docker-compose.ci.yml ps
+          for i in $(seq 1 12); do
+            DB_STATUS=$(docker inspect -f '{{.State.Health.Status}}' $(docker compose -f docker-compose.ci.yml ps -q db))
+            REDIS_STATUS=$(docker inspect -f '{{.State.Health.Status}}' $(docker compose -f docker-compose.ci.yml ps -q redis))
+            if [ "$DB_STATUS" = "healthy" ] && [ "$REDIS_STATUS" = "healthy" ]; then
+              echo "✅ All services are healthy!"
+              break
+            fi
+            echo "Services not ready yet... waiting 5s (DB: $DB_STATUS, Redis: $REDIS_STATUS)"
+            sleep 5
+          done
+          if [ "$DB_STATUS" != "healthy" ] || [ "$REDIS_STATUS" != "healthy" ]; then
+            echo "❌ Services did not become healthy after 60 seconds"
+            docker compose -f docker-compose.ci.yml logs
+            exit 1
+          fi
+
+      - name: Build API image for testing
+        # Este passo garante que a imagem 'api' seja construída com o código mais recente
+        run: docker compose -f docker-compose.ci.yml build api
+
+      - name: Run Alembic migrations
+        run: |
+          echo "🚀 Applying database migrations..."
+          docker compose -f docker-compose.ci.yml run --rm api uv run alembic upgrade head
+
+      - name: Run tests
+        run: |
+          echo "🧪 Running tests with pytest..."
+          # Executa o pytest e permite que ele falhe.
+          # Em seguida, verifica o código de saída. Se for 5 (nenhum teste encontrado),
+          # o passo é considerado um sucesso. Qualquer outro código de erro resultará em falha.
+          docker compose -f docker-compose.ci.yml run --rm api uv run pytest || \
+            (test $? -eq 5 && echo "✅ Pytest passou sem encontrar testes." || exit $?)
+
+      - name: Tear down services
+        if: always()
+        run: |
+          echo "🧹 Cleaning up CI environment..."
+          docker compose -f docker-compose.ci.yml down -v --remove-orphans
+
+  create-pr:
+    runs-on: ubuntu-latest
+    needs: test
+    if: success() && startsWith(github.ref, 'refs/heads/feature/')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract feature branch info
+        shell: bash
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          FEATURE_NAME=${BRANCH_NAME#feature/}
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+          echo "FEATURE_NAME=$FEATURE_NAME" >> $GITHUB_ENV
+
+      - name: Check if PR already exists
+        id: check-pr
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${process.env.BRANCH_NAME}`,
+              base: 'dev',
+              state: 'open'
+            });
+            if (pulls.length > 0) {
+              core.setOutput('exists', 'true');
+              console.log(`PR already exists: #${pulls[0].number}`);
+            } else {
+              core.setOutput('exists', 'false');
+            }
+
+      - name: Create Pull Request
+        if: steps.check-pr.outputs.exists == 'false'
+        uses: repo-sync/pull-request@v2
+        with:
+          source_branch: ${{ env.BRANCH_NAME }}
+          destination_branch: "dev"
+          pr_title: "✨ Feature: ${{ env.FEATURE_NAME }}"
+          pr_body: |
+            ## 🚀 Auto PR - Feature Branch
+            **Branch**: `${{ env.BRANCH_NAME }}`
+            **Testes**: ✅ Passaram com sucesso no workflow #${{ github.run_number }}
+            ---
+            *Esta PR foi criada automaticamente.*
+          github_token: ${{ secrets.PAT || secrets.GITHUB_TOKEN }}
+
   build-and-push:
     runs-on: ubuntu-latest
+    needs: test
+    # Só executa em pushes para os branches principais, não em PRs
+    if: success() && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/hml' || github.ref == 'refs/heads/dev')
 
     steps:
       - name: Checkout code
-      - uses: actions/checkout@v4
+        uses: actions/checkout@v4
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to DockerHub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USER }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: clebernandi/zenndi-auth:${{ github.sha }}
+      - name: Extract branch name
+        shell: bash
+        run: |
+          BRANCH=${GITHUB_REF#refs/heads/}
+          echo "BRANCH_NAME=$BRANCH" >> $GITHUB_ENV
 
-      - name: Create latest tag
+      - name: Generate Docker tags
+        id: meta
+        run: |
+          REPO="clebernandi/zenndi-auth"
+          BRANCH="${{ env.BRANCH_NAME }}"
+          TAGS=""
+
+          if [ "$BRANCH" == "main" ]; then
+            TAGS="$REPO:latest,$REPO:${{ github.run_number }}"
+          else
+            TAGS="$REPO:$BRANCH"
+          fi
+
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+          echo "🏷️ Generated tags: $TAGS"
+
+      - name: Build and push production image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           push: true
-          tags: clebernandi/zenndi-auth:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

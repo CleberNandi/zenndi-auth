@@ -1,0 +1,58 @@
+# Este arquivo é usado exclusivamente para o ambiente de CI/CD.
+# A principal diferença é que ele NÃO monta o código-fonte local como um volume,
+# forçando os testes a rodarem contra o código que foi efetivamente construído na imagem Docker.
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - default
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+    networks:
+      - default
+
+  api:
+    # Constrói a imagem a partir do Dockerfile local
+    build:
+      context: .
+      dockerfile: build/deployments/Dockerfile.dev
+    image: zenndi-auth-ci:latest
+    restart: always
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      ENV_MODE: ${ENV_MODE}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}      
+      POSTGRES_HOST: db  
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - default
+
+networks:
+  default:
+    name: zenndi_network

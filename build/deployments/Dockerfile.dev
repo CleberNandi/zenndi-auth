@@ -12,7 +12,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 # Copia primeiro o arquivo de lock para aproveitar o cache do Docker.
 # A camada de instalação de dependências só será reconstruída se o requirements.lock mudar.
-COPY settings.toml requirements.lock ./
+COPY pyproject.toml settings.toml requirements.lock ./
 
 # Instala as dependências a partir do arquivo de lock.
 # Isso é muito mais rápido e determinístico do que compilar durante o build.
@@ -24,9 +24,11 @@ RUN uv pip install debugpy
 # Copia o código da aplicação para dentro da imagem.
 # Em tempo de execução, o volume do docker-compose irá sobrescrever este diretório,
 # perm=itindo o hot-reload, mas a cópia é necessária para a integridade da imagem.
-COPY /app /app
-COPY /logs /logs
-COPY /monitoring /monitoring
+COPY app ./app
+
+# Copia os arquivos e diretórios do Alembic para que as migrações possam ser executadas
+COPY alembic.ini ./
+COPY alembic ./alembic
 
 # Expõe a porta da aplicação e a porta de debug
 EXPOSE 8000
