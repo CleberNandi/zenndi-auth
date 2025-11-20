@@ -73,22 +73,24 @@ Mostrar toda a saída de logs diretamente no seu terminal.
 c. Simulando Eventos do GitHub
 Você pode simular diferentes gatilhos (on:) para testar a lógica condicional (if: ...) do seu workflow.
 
-Exemplo 1: Testando a criação de PR para uma feature Simule um push para um branch de feature. Isso irá executar os jobs test e, se bem-sucedido, o create-pr.
+Exemplo 1: Testando a criação de PR para uma `feature`
+Simule um push para um branch de feature definindo a variável de ambiente `GITHUB_REF`. Isso executará os jobs `test` e, se bem-sucedido, o `create-pr`.
 
 ```bash
-act push --branch feature/minha-nova-funcionalidade
+GITHUB_REF=refs/heads/feature/minha-nova-funcionalidade act push
 ```
 
 Exemplo 2: Testando o deploy para main Simule um push para o branch main. Isso executará os jobs test e, se bem-sucedido, o build-and-push.
 
 ```bash
-act push --branch main
+GITHUB_REF=refs/heads/main act push
+
 ```
 
 Exemplo 3: Testando um Pull Request Simule um evento de pull request para o branch dev.
 
 ```bash
-act pull_request --branch dev
+GITHUB_REF=refs/heads/dev act push
 ```
 
 3. Lidando com Secrets
