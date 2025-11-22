@@ -1,5 +1,6 @@
-# FINAL PV WORKFLOW - CI/CD COMPLETO
-name: CI/CD - Build, Test, and Deploy
+# 🚀 CI/CD — Workflow Final Otimizado (PV)
+
+name: CI/CD - Zenndi Auth
 
 on:
   push:
@@ -13,56 +14,52 @@ on:
       - "dev"
       - "hml"
       - "main"
-
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
   issues: write
   packages: write
   id-token: write
 
 jobs:
-  check-branch-push:
+  # ----------------------------------------------------------------------
+  # 1. Evita push direto para dev/hml/main (proteções de branch)
+  # ----------------------------------------------------------------------
+  protect-branches:
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     steps:
       - name: Block direct pushes to protected branches
         run: |
-          PROTECTED_BRANCHES=("refs/heads/dev" "refs/heads/hml" "refs/heads/main")
-          if [[ " ${PROTECTED_BRANCHES[@]} " =~ " ${GITHUB_REF} " ]]; then
-            echo "❌ Direct pushes to '${GITHUB_REF#refs/heads/}' are not allowed."
-            echo "Please use a feature branch and open a Pull Request."
-            exit 1
+          PROTECTED=("refs/heads/dev" "refs/heads/hml" "refs/heads/main")
+          if [[ " ${PROTECTED[@]} " =~ " ${GITHUB_REF} " ]]; then
+            echo "❌ Push proibido em ${GITHUB_REF#refs/heads/}"; exit 1
           fi
-          echo "✅ Push is to a feature branch. Proceeding..."
+          echo "✔ Push permitido (feature branch)"
 
+  # ----------------------------------------------------------------------
+  # 2. Testes completos usando docker-compose.ci.yml
+  # ----------------------------------------------------------------------
   test:
     runs-on: ubuntu-latest
-    needs: check-branch-push
+    needs: protect-branches
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Create .env file for CI
-        env:
-          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+      - name: Generate .env for CI
         run: |
-          echo "Creating .env file for testing..."
           cat <<EOF > .env
-          POSTGRES_USER=${POSTGRES_USER}
-          POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-          POSTGRES_DB=${POSTGRES_DB}
-          DATABASE_URL="postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
-          REDIS_URL="redis://redis:6379/0"
+          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+          DATABASE_URL=postgresql+asyncpg://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@db:5432/${{ secrets.POSTGRES_DB }}
+          REDIS_URL=redis://redis:6379/0
           ENV_MODE=test
-          SECRET_KEY=a-very-secret-key-for-ci-that-is-not-production
+          SECRET_KEY=ci-test-key
           ALGORITHM=HS256
           SMTP_USER=test@example.com
           SMTP_PASSWORD=password
@@ -70,127 +67,111 @@ jobs:
           SMTP_PORT=587
           EOF
 
-      - name: Start services (DB + Redis)
+      - name: Start DB + Redis
         run: docker compose -f docker-compose.ci.yml up -d db redis
 
       - name: Wait for services
         run: |
-          echo "Waiting for DB and Redis to be healthy..."
-          for i in $(seq 1 12); do
+          for i in {1..12}; do
             DB_STATUS=$(docker inspect -f '{{.State.Health.Status}}' $(docker compose -f docker-compose.ci.yml ps -q db))
             REDIS_STATUS=$(docker inspect -f '{{.State.Health.Status}}' $(docker compose -f docker-compose.ci.yml ps -q redis))
-            if [ "$DB_STATUS" = "healthy" ] && [ "$REDIS_STATUS" = "healthy" ]; then
-              echo "✅ All services are healthy!"
-              break
-            fi
-            echo "Services not ready yet... waiting 5s (DB: $DB_STATUS, Redis: $REDIS_STATUS)"
-            sleep 5
+            [[ "$DB_STATUS" == "healthy" && "$REDIS_STATUS" == "healthy" ]] && break
+            echo "Aguardando serviços... $i/12"; sleep 5
           done
-          if [ "$DB_STATUS" != "healthy" ] || [ "$REDIS_STATUS" != "healthy" ]; then
-            echo "❌ Services did not become healthy"
-            docker compose -f docker-compose.ci.yml logs
-            exit 1
-          fi
 
-      - name: Build API image for testing
+      - name: Build API image
         run: docker compose -f docker-compose.ci.yml build api
 
-      - name: Run Alembic migrations
+      - name: Run migrations
         run: docker compose -f docker-compose.ci.yml run --rm api uv run alembic upgrade head
 
       - name: Run tests
         run: |
           docker compose -f docker-compose.ci.yml run --rm api uv run pytest || \
-            (test $? -eq 5 && echo "✅ Pytest passou sem encontrar testes." || exit $? )
+          (test $? -eq 5 && echo "✔ Sem testes encontrados" || exit $?)
 
-      - name: Tear down services
+      - name: Cleanup
         if: always()
         run: docker compose -f docker-compose.ci.yml down -v --remove-orphans
 
-  create-pr:
+  # ----------------------------------------------------------------------
+  # 3. Auto-PR de feature → dev (apenas se não existir PR aberto)
+  #    Usa GH_PAT (não GITHUB_TOKEN!)
+  # ----------------------------------------------------------------------
+  auto-pr:
     runs-on: ubuntu-latest
     needs: test
-    if: success() && startsWith(github.ref, 'refs/heads/feature/')
+    if: startsWith(github.ref, 'refs/heads/feature/')
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
 
-      - name: Extract feature branch info
+      - name: Extract branch
         run: |
-          BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          FEATURE_NAME=${BRANCH_NAME#feature/}
-          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
-          echo "FEATURE_NAME=$FEATURE_NAME" >> $GITHUB_ENV
+          BRANCH=${GITHUB_REF#refs/heads/}
+          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+          echo "FEATURE=${BRANCH#feature/}" >> $GITHUB_ENV
 
-      - name: Check if PR exists
-        id: check
+      - name: Check if PR already exists
+        id: checkpr
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GH_PAT }}
           script: |
-            const { data: pulls } = await github.rest.pulls.list({
+            const res = await github.rest.pulls.list({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              head: `${context.repo.owner}:${process.env.BRANCH_NAME}`,
+              head: `${context.repo.owner}:${process.env.BRANCH}`,
               base: 'dev',
               state: 'open'
             });
-            if (pulls.length > 0) core.setOutput('exists', 'true');
-            else core.setOutput('exists', 'false');
+            core.setOutput('exists', res.data.length > 0);
 
       - name: Create PR
-        if: steps.check.outputs.exists == 'false'
+        if: steps.checkpr.outputs.exists == 'false'
         uses: repo-sync/pull-request@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          source_branch: ${{ env.BRANCH_NAME }}
+          source_branch: ${{ env.BRANCH }}
           destination_branch: dev
-          pr_title: "✨ Feature: ${{ env.FEATURE_NAME }}"
+          pr_title: "✨ Feature: ${{ env.FEATURE }}"
           pr_body: |
-            ## 🚀 Auto PR - Feature Branch
-            Branch: `${{ env.BRANCH_NAME }}`
-            Testes: ✅ Passaram com sucesso
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+            ## Auto PR
+            - Branch: `${{ env.BRANCH }}`
+            - Testes: OK
+          github_token: ${{ secrets.GH_PAT }}
 
-  build-and-push:
+  # ----------------------------------------------------------------------
+  # 4. Build + Push para GHCR (dev/hml/main)
+  # ----------------------------------------------------------------------
+  build-push:
     runs-on: ubuntu-latest
     needs: test
-    if: success() && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/hml' || github.ref == 'refs/heads/dev')
+    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/hml' || github.ref == 'refs/heads/main'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
+      - name: Login GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract branch name
-        run: echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
-
       - name: Generate tags
         id: meta
         run: |
-          REPO="ghcr.io/${{ github.repository_owner }}/zenndi-auth"
-          BRANCH="${{ env.BRANCH_NAME }}"
-          if [ "$BRANCH" = "main" ]; then
-            echo "tags=$REPO:latest,$REPO:${{ github.run_number }}" >> $GITHUB_OUTPUT
+          IMAGE="ghcr.io/${{ github.repository_owner }}/zenndi-auth"
+          BRANCH=${GITHUB_REF#refs/heads/}
+          if [[ "$BRANCH" == "main" ]]; then
+            echo "tags=$IMAGE:latest,$IMAGE:${{ github.run_number }}" >> $GITHUB_OUTPUT
           else
-            echo "tags=$REPO:$BRANCH" >> $GITHUB_OUTPUT
+            echo "tags=$IMAGE:$BRANCH" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build and push image
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
