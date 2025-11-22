@@ -1,6 +1,6 @@
 # Zenndi Auth API
 
-[![CI/CD](https://github.com/SEU_USUARIO/SEU_REPOSITORIO/actions/workflows/ci.yml/badge.svg)](https://github.com/SEU_USUARIO/SEU_REPOSITORIO/actions/workflows/ci.yml)
+[![CI/CD](https://github.com/CleberNandi/zenndi-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/CleberNandi/zenndi-auth/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Docker Image](https://img.shields.io/docker/pulls/clebernandi/zenndi-auth.svg)](https://hub.docker.com/r/clebernandi/zenndi-auth)
 
@@ -65,7 +65,7 @@ Para rodar o projeto localmente, você precisará do Docker e Docker Compose ins
 1.  **Clone o repositório:**
 
     ```bash
-    git clone https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git
+    git clone https://github.com/CleberNandi/zenndi-auth.git
     cd zenndi_auth
     ```
 
