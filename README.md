@@ -4,7 +4,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Docker Image](https://img.shields.io/docker/pulls/clebernandi/zenndi-auth.svg)](https://hub.docker.com/r/clebernandi/zenndi-auth)
 
-API de autenticação e gerenciamento de usuários para a plataforma Zenndi. Construída com FastAPI, PostgreSQL e Redis, seguindo as melhores práticas de desenvolvimento, segurança e CI/CD.
+API de autenticação e gerenciamento de usuários para a plataforma Zenndi. Construída com FastAPI, PostgreSQL e Redis, seguindo as melhores práticas de desenvolvimento, segurança e CI/CD..
 
 ## ✨ Features
 
