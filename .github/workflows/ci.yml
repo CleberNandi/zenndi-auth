@@ -21,8 +21,23 @@ permissions:
   issues: write
 
 jobs:
+  check-branch-push:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - name: Block direct pushes to protected branches
+        run: |
+          PROTECTED_BRANCHES=("refs/heads/dev" "refs/heads/hml" "refs/heads/main")
+          if [[ " ${PROTECTED_BRANCHES[@]} " =~ " ${GITHUB_REF} " ]]; then
+            echo "❌ Direct pushes to '${GITHUB_REF#refs/heads/}' are not allowed."
+            echo "Please use a feature branch and open a Pull Request."
+            exit 1
+          fi
+          echo "✅ Push is to a feature branch. Proceeding..."
+
   test:
     runs-on: ubuntu-latest
+    needs: check-branch-push
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
