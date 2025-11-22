@@ -144,7 +144,7 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         uses: repo-sync/pull-request@v2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         with:
           source_branch: ${{ env.BRANCH_NAME }}
           destination_branch: dev
