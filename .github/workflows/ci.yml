@@ -33,11 +33,10 @@ jobs:
     steps:
       - name: Block direct pushes to protected branches
         run: |
-          PROTECTED=("refs/heads/dev" "refs/heads/hml" "refs/heads/main")
-          if [[ " ${PROTECTED[@]} " =~ " ${GITHUB_REF} " ]]; then
-            echo "❌ Push proibido em ${GITHUB_REF#refs/heads/}"; exit 1
+          if [[ " ${PROTECTED[@]} " =~ " ${GITHUB_REF} " ]] && [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            echo "❌ Push direto proibido em ${GITHUB_REF#refs/heads/}"
+            exit 1
           fi
-          echo "✔ Push permitido (feature branch)"
 
   # ----------------------------------------------------------------------
   # 2. Testes completos usando docker-compose.ci.yml
