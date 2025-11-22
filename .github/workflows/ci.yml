@@ -94,24 +94,50 @@ jobs:
         run: docker compose -f docker-compose.ci.yml down -v --remove-orphans
 
   # ----------------------------------------------------------------------
-  # 3. Auto-PR de feature → dev (apenas se não existir PR aberto)
-  #    Usa GH_PAT (não GITHUB_TOKEN!)
+  # 3. Auto PR — feature → dev | dev → hml | hml → main
   # ----------------------------------------------------------------------
   auto-pr:
     runs-on: ubuntu-latest
     needs: test
-    if: startsWith(github.ref, 'refs/heads/feature/')
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
 
-      - name: Extract branch
+      - name: Detect branch
         run: |
           BRANCH=${GITHUB_REF#refs/heads/}
           echo "BRANCH=$BRANCH" >> $GITHUB_ENV
-          echo "FEATURE=${BRANCH#feature/}" >> $GITHUB_ENV
 
-      - name: Check if PR already exists
+      - name: Determine target branch
+        id: target
+        run: |
+          SRC="${BRANCH}"
+
+          if [[ "$SRC" == feature/* ]]; then
+            echo "TARGET=dev" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          if [[ "$SRC" == "dev" ]]; then
+            echo "TARGET=hml" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          if [[ "$SRC" == "hml" ]]; then
+            echo "TARGET=main" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          echo "No PR rule for this branch ($SRC)"
+          echo "TARGET=" >> $GITHUB_ENV
+
+      - name: Stop if no target
+        if: env.TARGET == ''
+        run: echo "Skipping PR creation"
+
+      - name: Check existing PR
+        if: env.TARGET != ''
         id: checkpr
         uses: actions/github-script@v7
         with:
@@ -121,22 +147,23 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               head: `${context.repo.owner}:${process.env.BRANCH}`,
-              base: 'dev',
+              base: process.env.TARGET,
               state: 'open'
             });
             core.setOutput('exists', res.data.length > 0);
 
       - name: Create PR
-        if: steps.checkpr.outputs.exists == 'false'
+        if: steps.checkpr.outputs.exists == 'false' && env.TARGET != ''
         uses: repo-sync/pull-request@v2
         with:
           source_branch: ${{ env.BRANCH }}
-          destination_branch: dev
-          pr_title: "✨ Feature: ${{ env.FEATURE }}"
+          destination_branch: ${{ env.TARGET }}
+          pr_title: "🔀 Auto PR: ${{ env.BRANCH }} → ${{ env.TARGET }}"
           pr_body: |
-            ## Auto PR
-            - Branch: `${{ env.BRANCH }}`
-            - Testes: OK
+            ## PR Automático
+            - Origem: `${{ env.BRANCH }}`
+            - Destino: `${{ env.TARGET }}`
+            - Gerado automaticamente após testes bem-sucedidos.
           github_token: ${{ secrets.GH_PAT }}
 
   # ----------------------------------------------------------------------
