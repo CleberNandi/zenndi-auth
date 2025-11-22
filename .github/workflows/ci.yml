@@ -156,13 +156,14 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate tags
         id: meta
         run: |
-          IMAGE="ghcr.io/${{ github.repository_owner }}/zenndi-auth"
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="ghcr.io/$OWNER/zenndi-auth"
           BRANCH=${GITHUB_REF#refs/heads/}
           if [[ "$BRANCH" == "main" ]]; then
             echo "tags=$IMAGE:latest,$IMAGE:${{ github.run_number }}" >> $GITHUB_OUTPUT
